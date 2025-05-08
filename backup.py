@@ -9,6 +9,9 @@ from deep_translator import GoogleTranslator
 from glob import glob
 from pptx import Presentation
 from pptx.util import Inches
+from pptx.enum.shapes import MSO_SHAPE_TYPE
+import tempfile
+import shutil
 
 
 FORMATOS_SUPORTADOS = [".docx", ".pdf", ".txt", ".pptx"]
@@ -63,7 +66,7 @@ def executar_modo_batch(config_path):
                     novo_nome = f"{name}_{destino}{ext}"
                     output_path = os.path.join(diretoria, novo_nome)
 
-                    salvar_documento_sem_dialog(file_path, translated_paragraphs, output_path, destino)  # Agora passando o 'destino'
+                    salvar_documento_sem_dialog(file_path, translated_paragraphs, output_path, destino)  
                     print(f"✅ Salvo: {output_path}")
 
                 except Exception as e:
@@ -82,8 +85,14 @@ def salvar_documento_sem_dialog(file_path, translated_paragraphs, output_path, d
         index = 0
         for para in doc.paragraphs:
             if index < len(translated_paragraphs) and para.text.strip():
-                para.text = translated_paragraphs[index]
-                index += 1
+                try:
+                    original_text = para.text.strip()
+                    if original_text:
+                        para.clear() 
+                        para.add_run(translated_paragraphs[index])
+                        index += 1
+                except Exception as e:
+                    print(f"[AVISO] Erro ao atualizar parágrafo: {e}")
         doc.save(output_path)
 
     elif file_extension == ".pdf":
@@ -123,8 +132,6 @@ def salvar_documento_sem_dialog(file_path, translated_paragraphs, output_path, d
     else:
         raise ValueError("Formato de arquivo não suportado para salvar.")
 
-
-
 def carregar_documento(file_path):
     file_extension = os.path.splitext(file_path)[1].lower()
 
@@ -147,11 +154,11 @@ def carregar_documento(file_path):
             return file.readlines()
 
     elif file_extension == ".pptx":
-        return carregar_pptx(file_path)  # Agora chama a função correta para carregar o PPTX
+        return carregar_pptx(file_path)  
 
     else:
         raise ValueError("Formato de arquivo não suportado.")
-  
+
 def carregar_pptx(file_path):
     prs = Presentation(file_path)
     paragraphs = []
@@ -165,43 +172,109 @@ def carregar_pptx(file_path):
                         if texto:
                             paragraphs.append(texto)
     return paragraphs
+
+def salvar_imagem_temporaria(imagem_bytes, extension):
+    """Salva uma imagem temporária e retorna o caminho"""
+    temp_dir = tempfile.mkdtemp()
+    temp_path = os.path.join(temp_dir, f'temp_image.{extension}')
     
+    with open(temp_path, 'wb') as f:
+        f.write(imagem_bytes)
+    
+    return temp_path, temp_dir
+
 def traduzir_pptx_mantendo_formatacao(caminho_entrada, caminho_saida, idioma_destino='pt'):
     prs = Presentation(caminho_entrada)
     tradutor = GoogleTranslator(source='auto', target=idioma_destino)
+    temp_dirs = []  # Lista para controlar diretórios temporários
 
-    for slide in prs.slides:
-        for shape in slide.shapes:
-            # Se o shape tem texto
-            if shape.has_text_frame:
-                for paragrafo in shape.text_frame.paragraphs:
-                    for run in paragrafo.runs:
-                        texto_original = run.text.strip()
-                        if texto_original:
-                            try:
-                                # Traduzir o texto
-                                run.text = tradutor.translate(texto_original)
-                            except Exception as e:
-                                print(f"Erro ao traduzir '{texto_original}': {e}")
+    try:
+        for slide in prs.slides:
+            # Dicionário para armazenar informações das imagens
+            imagens_info = {}
             
-            # Se o shape tem imagem, preservar a imagem
-            if shape.shape_type == 13:  # Tipo 13 é imagem
-                imagem = shape.image
-                imagem_bytes = imagem.blob
-                imagem_extension = imagem.ext
+            # Primeiro passo: Mapear todas as imagens e suas propriedades
+            for shape in slide.shapes:
+                if hasattr(shape, 'image'):
+                    imagens_info[shape.shape_id] = {
+                        'left': shape.left,
+                        'top': shape.top,
+                        'width': shape.width,
+                        'height': shape.height,
+                        'zorder': shape.element.get_or_add_ln().attrib.get('z-order', 0),
+                        'rotation': shape.rotation
+                    }
+                    
+                    # Salvar imagem temporariamente
+                    if hasattr(shape, 'image'):
+                        temp_path, temp_dir = salvar_imagem_temporaria(shape.image.blob, shape.image.ext)
+                        imagens_info[shape.shape_id]['temp_path'] = temp_path
+                        temp_dirs.append(temp_dir)
 
-                # Inserir imagem novamente
-                imagem_path = os.path.join('temp_image.' + imagem_extension)  # Salvar como arquivo temporário
-                with open(imagem_path, 'wb') as img_file:
-                    img_file.write(imagem_bytes)
+            # Segundo passo: Traduzir texto mantendo formatação
+            for shape in slide.shapes:
+                if shape.has_text_frame:
+                    for paragraph in shape.text_frame.paragraphs:
+                        # Preservar formatação do parágrafo
+                        alignment = paragraph.alignment
+                        space_before = paragraph.space_before
+                        space_after = paragraph.space_after
+                        
+                        for run in paragraph.runs:
+                            # Preservar formatação do texto
+                            font_name = run.font.name
+                            font_size = run.font.size
+                            bold = run.font.bold
+                            italic = run.font.italic
+                            underline = run.font.underline
+                            
+                            texto_original = run.text.strip()
+                            if texto_original:
+                                try:
+                                    # Traduzir e manter formatação
+                                    run.text = tradutor.translate(texto_original)
+                                    run.font.name = font_name
+                                    run.font.size = font_size
+                                    run.font.bold = bold
+                                    run.font.italic = italic
+                                    run.font.underline = underline
+                                except Exception as e:
+                                    print(f"Erro ao traduzir '{texto_original}': {e}")
+                        
+                        # Restaurar formatação do parágrafo
+                        paragraph.alignment = alignment
+                        paragraph.space_before = space_before
+                        paragraph.space_after = space_after
 
-                # Adicionar imagem preservada ao slide
-                left = Inches(1)
-                top = Inches(1)
-                slide.shapes.add_picture(imagem_path, left, top)
+            # Terceiro passo: Recriar imagens com as propriedades originais
+            for shape_id, info in imagens_info.items():
+                try:
+                    # Adicionar imagem de volta com propriedades originais
+                    picture = slide.shapes.add_picture(
+                        info['temp_path'],
+                        info['left'],
+                        info['top'],
+                        width=info['width'],
+                        height=info['height']
+                    )
+                    
+                    # Restaurar outras propriedades
+                    picture.rotation = info['rotation']
+                    if hasattr(picture.element, 'get_or_add_ln'):
+                        picture.element.get_or_add_ln().attrib['z-order'] = str(info['zorder'])
+                except Exception as e:
+                    print(f"Erro ao restaurar imagem: {e}")
 
-    # Salvar o novo PowerPoint com tradução
-    prs.save(caminho_saida)
+        # Salvar apresentação
+        prs.save(caminho_saida)
+
+    finally:
+        # Limpar arquivos temporários
+        for temp_dir in temp_dirs:
+            try:
+                shutil.rmtree(temp_dir)
+            except Exception as e:
+                print(f"Erro ao remover diretório temporário: {e}")
 
 
 if __name__ == "__main__":
