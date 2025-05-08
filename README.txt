@@ -1,81 +1,91 @@
-=========================
-TRADUTOR DE DOCUMENTOS
-=========================
+# Tradutor de Documentos em Lote
 
-Este programa permite traduzir arquivos .docx, .pdf e .txt automaticamente.
+Um programa Python que traduz documentos em lote mantendo formatação e imagens originais.
 
-Você pode usar de duas formas:
+## Funcionalidades
 
------------------------------------------
-1. MODO INTERFACE GRÁFICA (Tkinter)
------------------------------------------
-- Execute o script com duplo clique OU use:
+- Tradução em lote de múltiplos documentos
+- Preservação de formatação original
+- Manutenção de imagens nos documentos
+- Suporte a múltiplos formatos
+- Processamento via arquivo de configuração JSON
 
-    python tradutor.py
+## Formatos Suportados
 
-- Selecione o arquivo que deseja traduzir.
-- Escolha o idioma de destino.
-- O arquivo será traduzido e poderá ser salvo onde desejar.
+- Microsoft Word (.docx)
+- PDF (.pdf)
+- Arquivos de texto (.txt)
+- PowerPoint (.pptx)
+
+## Idiomas Suportados
+
+- Inglês (en)
+- Espanhol (es)
+- Francês (fr)
+- Alemão (de)
+- Italiano (it)
+- Português (pt)
+
+## Pré-requisitos
+
+```bash
+pip install -r requirements.txt
+```
 
 
------------------------------------------
-2. MODO AUTOMÁTICO VIA CONFIG.JSON
------------------------------------------
 
-- Configure o arquivo "config.json" com os blocos de tradução desejados.
+## Estrutura do Projeto
 
-  Exemplo de bloco:
-  
-    {
-      "idioma_origem": "auto",
-      "idioma_destino": "en",
-      "diretoria": "./documentos/ingles"
-    }
+```
+projeto/
+│
+├── main.py           # Arquivo principal
+├── requirements.txt  # Dependências
+├── config.json      # Arquivo de configuração
+└── README.md        # Este arquivo
+```
 
-- Você pode adicionar quantos blocos quiser. Exemplo com 3 blocos:
-  
-    {
-      "blocos": [
+## Detalhes Técnicos
+
+## Preservação de Imagens
+
+### Em Documentos Word
+- Preservação da estrutura original
+- Manutenção de posicionamento
+
+## Em PowerPoint
+- Mapeamento de coordenadas das imagens
+- Salvamento temporário
+- Recriação do novo arquivo
+
+### Tradução
+
+Utiliza a biblioteca `deep_translator` com Google Translate:
+```python
+from deep_translator import GoogleTranslator
+translator = GoogleTranslator(source='en', target='pt')
+```
+
+##  Configuração Detalhada
+
+### Formato do JSON de Configuração
+
+```json
+{
+    "blocos": [
         {
-          "idioma_origem": "auto",
-          "idioma_destino": "en",
-          "diretoria": "./documentos/ingles"
-        },
-        {
-          "idioma_origem": "auto",
-          "idioma_destino": "es",
-          "diretoria": "./documentos/espanhol"
-        },
-        {
-          "idioma_origem": "auto",
-          "idioma_destino": "fr",
-          "diretoria": "./documentos/frances"
+            "idioma_origem": "auto",  // Use "auto" para detecção automática
+            "idioma_destino": "pt",   // Idioma alvo
+            "diretorio": "caminho/para/arquivos"
         }
-      ]
-    }
+    ]
+}
+```
 
-- Para executar o modo automático, use no terminal:
+## Notas
 
-    python tradutor.py --config config.json
+- Os arquivos traduzidos são salvos com sufixo do idioma alvo
+- Mantém a formatação original dos documentos
+- Preserva imagens e suas posições
+- Requer conexão com internet para tradução
 
-- O programa irá traduzir automaticamente todos os arquivos nas pastas indicadas.
-
-- Os arquivos traduzidos serão salvos no mesmo diretório com um sufixo indicando o idioma. Exemplo:
-
-    relatorio.docx  →  relatorio_en.docx
-    resumo.pdf      →  resumo_es.pdf
-
-
------------------------------------------
-Idiomas suportados:
------------------------------------------
-- en → Inglês
-- es → Espanhol
-- fr → Francês
-- de → Alemão
-- it → Italiano
-- pt → Português
-
-=========================
-Qualquer dúvida, fale com Carlos :)
-=========================
