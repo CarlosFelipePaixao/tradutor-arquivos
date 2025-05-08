@@ -9,7 +9,9 @@ from deep_translator import GoogleTranslator
 from glob import glob
 from pptx import Presentation
 from pptx.util import Inches
-
+from pptx.enum.shapes import MSO_SHAPE_TYPE
+import tempfile 
+import shutil
 
 FORMATOS_SUPORTADOS = [".docx", ".pdf", ".txt", ".pptx"]
 IDIOMAS_SUPORTADOS = ["en", "es", "fr", "de", "it", "pt"]
@@ -64,12 +66,12 @@ def executar_modo_batch(config_path):
                     output_path = os.path.join(diretoria, novo_nome)
 
                     salvar_documento_sem_dialog(file_path, translated_paragraphs, output_path, destino)  
-                    print(f"✅ Salvo: {output_path}")
+                    print(f" Salvo: {output_path}")
 
                 except Exception as e:
                     print(f"[ERRO] Falha ao processar {file_path}: {e}")
 
-        print("\n🎉 Processamento concluído.")
+        print("\n Processamento concluído.")
 
     except Exception as e:
         print(f"[ERRO] Falha ao carregar arquivo de configuração: {e}")
@@ -78,24 +80,74 @@ def salvar_documento_sem_dialog(file_path, translated_paragraphs, output_path, d
     file_extension = os.path.splitext(file_path)[1].lower()
 
     if file_extension == ".docx":
+
         doc = Document(file_path)
         index = 0
+
+        
         for para in doc.paragraphs:
-            if index < len(translated_paragraphs) and para.text.strip():
-                try:
-                    original_text = para.text.strip()
-                    if original_text:
-                        para.clear() 
-                        para.add_run(translated_paragraphs[index])
-                        index += 1
-                except Exception as e:
-                    print(f"[AVISO] Erro ao atualizar parágrafo: {e}")
+            if not para.text.strip():
+                continue
+
+            
+            style = para.style
+            alignment = para.paragraph_format.alignment
+            
+            
+            runs_info = []
+            for run in para.runs:
+                if run.text.strip():
+                    runs_info.append({
+                        'text': run.text,
+                        'bold': run.bold,
+                        'italic': run.italic,
+                        'underline': run.underline,
+                        'font': run.font.name,
+                        'size': run.font.size,
+                        'color': run.font.color.rgb if hasattr(run.font.color, 'rgb') else None,
+                        'has_image': bool('graphicData' in run._r.xml or 'picture' in run._r.xml)
+                    })
+
+           
+            if runs_info and index < len(translated_paragraphs):
+                
+                xml_original = para._p.xml
+                para.clear()
+                
+                
+                for run_info in runs_info:
+                    if run_info['has_image']:
+                        
+                        run_xml = run_info.get('xml', '')
+                        if run_xml:
+                            new_run = para.add_run()
+                            new_run._r.append(run_xml)
+                    else:
+                       
+                        new_run = para.add_run(translated_paragraphs[index])
+                        new_run.bold = run_info['bold']
+                        new_run.italic = run_info['italic']
+                        new_run.underline = run_info['underline']
+                        new_run.font.name = run_info['font']
+                        if run_info['size']:
+                            new_run.font.size = run_info['size']
+                        if run_info['color']:
+                            new_run.font.color.rgb = run_info['color']
+                
+                
+                if any(not r['has_image'] for r in runs_info):
+                    index += 1
+
+                
+                para.style = style
+                para.paragraph_format.alignment = alignment
+
+       
         doc.save(output_path)
 
 
-
-
     elif file_extension == ".pdf":
+        
         c = canvas.Canvas(output_path, pagesize=letter)
         width, height = letter
         margin = 72
@@ -132,8 +184,6 @@ def salvar_documento_sem_dialog(file_path, translated_paragraphs, output_path, d
     else:
         raise ValueError("Formato de arquivo não suportado para salvar.")
 
-
-
 def carregar_documento(file_path):
     file_extension = os.path.splitext(file_path)[1].lower()
 
@@ -161,7 +211,6 @@ def carregar_documento(file_path):
     else:
         raise ValueError("Formato de arquivo não suportado.")
 
-  
 def carregar_pptx(file_path):
     prs = Presentation(file_path)
     paragraphs = []
@@ -175,37 +224,100 @@ def carregar_pptx(file_path):
                         if texto:
                             paragraphs.append(texto)
     return paragraphs
+
+def salvar_imagem_temporaria(imagem_bytes, extension):
+    """Salvar imagens temporária"""
+    temp_dir = tempfile.mkdtemp()
+    temp_path = os.path.join(temp_dir, f'temp_image.{extension}')
     
+    with open(temp_path, 'wb') as f:
+        f.write(imagem_bytes)
+    
+    return temp_path, temp_dir
+
 def traduzir_pptx_mantendo_formatacao(caminho_entrada, caminho_saida, idioma_destino='pt'):
     prs = Presentation(caminho_entrada)
     tradutor = GoogleTranslator(source='auto', target=idioma_destino)
+    temp_dirs = []  
 
-    for slide in prs.slides:
-        for shape in slide.shapes:
-            if shape.has_text_frame:
-                for paragrafo in shape.text_frame.paragraphs:
-                    for run in paragrafo.runs:
-                        texto_original = run.text.strip()
-                        if texto_original:
-                            try:
-                                run.text = tradutor.translate(texto_original)
-                            except Exception as e:
-                                print(f"Erro ao traduzir '{texto_original}': {e}")
+    try:
+        for slide in prs.slides:
             
-            if shape.shape_type == 13:  
-                imagem = shape.image
-                imagem_bytes = imagem.blob
-                imagem_extension = imagem.ext
+            imagens_info = {}
+            
+            
+            for shape in slide.shapes:
+                if hasattr(shape, 'image'):
+                    imagens_info[shape.shape_id] = {
+                        'left': shape.left,
+                        'top': shape.top,
+                        'width': shape.width,
+                        'height': shape.height,
+                        'zorder': shape.element.get_or_add_ln().attrib.get('z-order', 0),
+                        'rotation': shape.rotation
+                    }
+                                       
+                    if hasattr(shape, 'image'):
+                        temp_path, temp_dir = salvar_imagem_temporaria(shape.image.blob, shape.image.ext)
+                        imagens_info[shape.shape_id]['temp_path'] = temp_path
+                        temp_dirs.append(temp_dir)
 
-                imagem_path = os.path.join('temp_image.' + imagem_extension)  
-                with open(imagem_path, 'wb') as img_file:
-                    img_file.write(imagem_bytes)
+            for shape in slide.shapes:
+                if shape.has_text_frame:
+                    for paragraph in shape.text_frame.paragraphs:
+                        alignment = paragraph.alignment
+                        space_before = paragraph.space_before
+                        space_after = paragraph.space_after
+                        
+                        for run in paragraph.runs:
+                            font_name = run.font.name
+                            font_size = run.font.size
+                            bold = run.font.bold
+                            italic = run.font.italic
+                            underline = run.font.underline
+                            
+                            texto_original = run.text.strip()
+                            if texto_original:
+                                try:                                  
+                                    run.text = tradutor.translate(texto_original)
+                                    run.font.name = font_name
+                                    run.font.size = font_size
+                                    run.font.bold = bold
+                                    run.font.italic = italic
+                                    run.font.underline = underline
+                                except Exception as e:
+                                    print(f"Erro ao traduzir '{texto_original}': {e}")                                           
+                        paragraph.alignment = alignment
+                        paragraph.space_before = space_before
+                        paragraph.space_after = space_after
 
-                left = Inches(1)
-                top = Inches(1)
-                slide.shapes.add_picture(imagem_path, left, top)
+ 
+            for shape_id, info in imagens_info.items():
+                try:
+                
+                    picture = slide.shapes.add_picture(
+                        info['temp_path'],
+                        info['left'],
+                        info['top'],
+                        width=info['width'],
+                        height=info['height']
+                    )
+                                   
+                    picture.rotation = info['rotation']
+                    if hasattr(picture.element, 'get_or_add_ln'):
+                        picture.element.get_or_add_ln().attrib['z-order'] = str(info['zorder'])
+                except Exception as e:
+                    print(f"Erro ao restaurar imagem: {e}")
 
-    prs.save(caminho_saida)
+        
+        prs.save(caminho_saida)
+
+    finally:
+        for temp_dir in temp_dirs:
+            try:
+                shutil.rmtree(temp_dir)
+            except Exception as e:
+                print(f"Erro ao remover diretório temporário: {e}")
 
 
 if __name__ == "__main__":
