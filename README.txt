@@ -1,6 +1,6 @@
 # Tradutor de Documentos em Lote
 
-Um programa Python que traduz documentos em lote mantendo formatação e imagens originais.
+traduz documentos em lote mantendo formatação e imagens originais
 
 ## Funcionalidades
 
@@ -26,12 +26,6 @@ Um programa Python que traduz documentos em lote mantendo formatação e imagens
 - Italiano (it)
 - Português (pt)
 
-## Pré-requisitos
-
-```bash
-pip install -r requirements.txt
-```
-
 
 
 ## Estrutura do Projeto
@@ -44,10 +38,6 @@ projeto/
 ├── config.json      # Arquivo de configuração
 └── README.md        # Este arquivo
 ```
-
-## Detalhes Técnicos
-
-## Preservação de Imagens
 
 ### Em Documentos Word
 - Preservação da estrutura original
@@ -66,8 +56,6 @@ from deep_translator import GoogleTranslator
 translator = GoogleTranslator(source='en', target='pt')
 ```
 
-##  Configuração Detalhada
-
 ### Formato do JSON de Configuração
 
 ```json
@@ -81,8 +69,6 @@ translator = GoogleTranslator(source='en', target='pt')
     ]
 }
 ```
-
-## Notas
 
 - Os arquivos traduzidos são salvos com sufixo do idioma alvo
 - Mantém a formatação original dos documentos
